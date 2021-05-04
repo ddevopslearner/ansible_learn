@@ -1,0 +1,142 @@
+---
+- name: include vars
+  include_vars: "{{ playbook_dir }}/config.yml"
+
+- name: yum check | Check for all updates
+  yum:
+    list: updates
+    update_cache: true
+  register: stat_yum_check_output
+  when: ansible_os_family == "RedHat" and server_yum_check_managed | bool
+  tags:
+    - all_updates
+
+- name: yum check | Check for Security updates
+  yum:
+    list: updates
+    security: yes
+    update_cache: true
+  register: stat_yum_check_output_security
+  when: ansible_os_family == "RedHat" and server_yum_check_managed | bool
+  tags:
+    - security_updates
+
+- name: yum check | Output debug yum check (all)
+  debug:
+    msg: "{{ stat_yum_check_output }}"
+  when: ansible_os_family == "RedHat" and server_yum_check_managed | bool and debug_enabled_default | bool
+  tags:
+    - all_updates
+
+- name: yum check | Output debug yum check (security)
+  debug:
+    msg: "{{ stat_yum_check_output_security }}"
+  when: ansible_os_family == "RedHat" and server_yum_check_managed | bool and debug_enabled_default | bool
+  tags:
+    - security_updates
+
+- name: Send slack notification Redhat
+  slack:
+    token: '{{ slack_token }}'
+    channel: '{{ slack_channel }}'
+    msg: '{{ inventory_hostname }} This host has updates available.\n\nResults: \n\n{{ stat_yum_check_output }} \n\n {{ stat_yum_check_output_security }} Have a nice day.'
+    color: good
+  when: ansible_os_family == "Redhat"
+
+- name: Search-only, return list of found updates | Windows
+  win_updates:
+    category_names: SecurityUpdates
+    state: searched
+    register: stat_win_check_output_security
+    when: ansible_os_family == "Windows"
+#    log_path: "path"
+
+- name: Install all security updates
+  win_updates:
+    category_names:
+    - SecurityUpdates
+#    reboot: yes
+    when: ansible_os_family == "Windows"
+  
+
+
+#- name: Zypper check | Check for all updates
+#  zypper:
+#    #list: updates
+#    name: list-updates
+#    update_cache: true
+#  register: stat_zypper_check_output
+#  #when: ansible_os_family == "Suse" | bool
+#  when: ansible_os_family == "Suse"
+#  tags:
+#    - all_updates
+
+- name: Zyper check | check for all updates using shell
+  shell: zypper list-updates
+  register: stat_zypper_check_output
+
+- name: Send slack notification
+  slack:
+    token: '{{ slack_token }}'
+    channel: '{{ slack_channel }}'
+    msg: '{{ inventory_hostname }} This host has updates availablely.\n\nResults: \n\n{{ stat_zypper_check_output }}. Have a nice day.'
+    color: good
+  when: ansible_os_family == "Suse"
+
+- name: zypper check | Output debug zypper check (all)
+  debug:
+    msg: "{{ stat_zypper_check_output }}"
+  #when: ansible_os_family == "Suse" | bool and debug_enabled_default | bool
+  when: ansible_os_family == "Suse" 
+  tags:
+    - all_updates
+
+- name: Zypper check security updates | check for all security updates using shell
+  shell: zypper list-patches
+  register: stat_zypper_check_output_security
+  when: ansible_os_family == "Suse"
+
+
+- name: zypper check | Output debug zypper check (security)
+  debug:
+    msg: "{{ stat_zypper_check_output_security }}"
+  #when: ansible_os_family == "Suse" | bool and debug_enabled_default | bool
+  when: ansible_os_family == "Suse"
+  tags:
+    - all_updates
+
+# - name: yum check | Output only package name
+#   debug:
+#     msg: "{{ stat_yum_check_output.results | map(attribute='name') | list }}"
+
+#Output in single line
+#https://stackoverflow.com/questions/31685125/is-it-possible-to-map-multiple-attributes-using-jinja-ansible/40661570#40661570
+# - name: yum check | Output yum check in single line
+#   debug:
+#     msg: "{% for result in stat_yum_check_output.results %}\
+#         {{ result.name }}-{{ result.version }}-{{ result.release }} |
+#       {% endfor %}"
+
+#Output in separate lines
+#https://stackoverflow.com/questions/31685125/is-it-possible-to-map-multiple-attributes-using-jinja-ansible/40661570#40661570
+- name: yum check | Output yum check results
+  debug:
+    msg: "{% set output = [] %}\
+        {% for result in stat_yum_check_output.results %}\
+          {{ output.append( result.name ~ '-' ~ result.version ~ '-' ~ result.release ) }}\
+        {% endfor %}\
+      {{ output }}"
+  when: ansible_os_family == "RedHat" and server_yum_check_managed | bool
+  tags:
+    - all_updates
+
+- name: yum check | Output yum check results
+  debug:
+    msg: "{% set output = [] %}\
+        {% for result in stat_yum_check_output_security.results %}\
+          {{ output.append( result.name ~ '-' ~ result.version ~ '-' ~ result.release ) }}\
+        {% endfor %}\
+      {{ output }}"
+  when: ansible_os_family == "RedHat" and server_yum_check_managed | bool
+  tags:
+    - security_updates
